@@ -16,12 +16,15 @@ This folder is a UI-only redesign of the existing React + Vite frontend. It keep
 
 ## Desktop window
 
-The existing Electron setup is retained. Start Vite first with `npm run dev`, then open another terminal in `frontend` and run:
+One command starts Vite, waits for it, opens the Electron window, and starts the backend if it is not already running:
+
 ```bash
-npm run desktop
+npm run dev:desktop
 ```
 
-The window controls use a small Electron preload bridge in `electron-preload.cjs`. Electron only loads the local Vite UI; the backend remains separate.
+`npm run dev` and `npm run desktop` still work separately, in two terminals, if you want to run the backend yourself. The main process checks `http://127.0.0.1:8001/health` before it creates a window and only stops a backend it started itself.
+
+The window controls use a small Electron preload bridge in `electron-preload.cjs`, which exposes exactly `minimize`, `maximize` and `close`.
 
 ## What's included
 
@@ -36,6 +39,7 @@ The window controls use a small Electron preload bridge in `electron-preload.cjs
 ## Important behavior notes
 
 - The UI still calls the same backend endpoint (`127.0.0.1:8001/chat`).
+- The composer stays usable when the backend is offline: you can always type, a notice names the command that starts it, and sending reports the real error instead of failing silently.
 - Conversation lists are saved in this browser's `localStorage`. The existing backend is shared across UI sessions, so this front-end session list does **not** automatically create separate backend/LLM memory contexts.
 - Web Search and Deep Think are shown as “soon” indicators because this frontend/backend contract does not currently expose those separate capabilities; they are not presented as working buttons.
 - The attachment icon is intentionally non-functional and labeled as unavailable.

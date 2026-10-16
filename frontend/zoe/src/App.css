@@ -507,3 +507,28 @@ button:disabled { opacity: .48; cursor: not-allowed !important; }
   .quick-card { box-sizing:border-box;width:100%;min-width:0;padding-left:10px;padding-right:10px; }
 }
 .quick-caption { font-size:12px;letter-spacing:-.1px;white-space:nowrap; }
+
+/* Offline notice. Sits above the composer, states the fact and the fix, and
+   deliberately blocks nothing: the textarea below it stays enabled. */
+.composer-offline {
+  width:min(100%,900px);
+  margin:0 0 8px;
+  padding:8px 14px;
+  border:1px solid rgba(255,255,255,.42);
+  border-radius:999px;
+  background:rgba(111,51,78,.72);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  color:rgba(255,255,255,.94);
+  font-size:13px;
+  line-height:1.35;
+  text-align:center;
+}
+.composer-offline code {
+  padding:1px 6px;
+  border-radius:6px;
+  background:rgba(0,0,0,.24);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:12px;
+  white-space:nowrap;
+}

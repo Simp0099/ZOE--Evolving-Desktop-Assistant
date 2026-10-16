@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:desktop": "node scripts/dev-desktop.mjs",
     "build": "vite build",
     "lint": "oxlint",
-    "test": "node --test src/",
+    "test": "node --test \"src/**/*.test.js\"",
     "preview": "vite preview",
     "desktop": "electron electron.cjs"
   },

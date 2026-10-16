@@ -101,6 +101,10 @@ function App() {
   const [devMode, setDevMode] = useState("idle");
   const [openMenuId, setOpenMenuId] = useState(null);
   const [backendReady, setBackendReady] = useState(false);
+  //: True once the first /health check has answered either way. Without it the
+  //: status would read "Disconnected" during the check rather than "Checking…",
+  //: which is a different statement about reality.
+  const [backendChecked, setBackendChecked] = useState(false);
   const [capabilities, setCapabilities] = useState(null);
 
   const audio = useAudioLevel();
@@ -116,6 +120,15 @@ function App() {
   const activeConversation = conversations.find((chat) => chat.id === currentActiveId) || conversations[0];
   const messages = activeConversation?.messages || [];
 
+  // Backend status, derived once. Declared before the callbacks that close
+  // over it: a `const` read earlier in the body than it is defined is a
+  // ReferenceError that blanks the whole app at mount.
+  const backendStatus = !backendChecked ? "Checking…" : backendReady ? "Connected" : "Disconnected";
+  const backendOffline = backendChecked && !backendReady;
+  //: Only a definitive "no" disables voice input. "Not checked yet" is not a
+  //: reason to take the microphone away from the user.
+  const voiceInputUnavailable = capabilities?.voice_input_available === false;
+
   // Backend readiness. Polled because the backend may start after the UI, and
   // polled on a short interval because a model call can take seconds.
   useEffect(() => {
@@ -127,9 +140,13 @@ function App() {
         if (!cancelled) {
           setBackendReady(true);
           setCapabilities(data);
+          setBackendChecked(true);
         }
       } catch {
-        if (!cancelled) setBackendReady(false);
+        if (!cancelled) {
+          setBackendReady(false);
+          setBackendChecked(true);
+        }
       }
     };
     ping();
@@ -243,6 +260,21 @@ function App() {
       setTimeout(() => setToast(""), 4000);
       return;
     }
+    // Recording is only worth opening the microphone for if something can
+    // transcribe it afterwards. Say so here rather than letting the user speak,
+    // wait and then fail on an upload.
+    if (voiceInputUnavailable) {
+      setToast("Speech recognition is not installed on the backend. Use the text box instead.");
+      setTimeout(() => setToast(""), 5000);
+      setVoiceState((state) => transition(state, VoiceState.ERROR));
+      return;
+    }
+    if (!backendReady) {
+      setToast("The backend is not running, so a recording cannot be transcribed. Start it, or use the text box.");
+      setTimeout(() => setToast(""), 6000);
+      setVoiceState((state) => transition(state, VoiceState.ERROR));
+      return;
+    }
 
     setVoiceState((state) => transition(state, VoiceState.REQUESTING_PERMISSION));
     setError("");
@@ -291,7 +323,7 @@ function App() {
       setVoiceState((state) => transition(state, VoiceState.ERROR));
       addActivity("SYSTEM", `Voice input error: ${failure?.message || failure}`);
     }
-  }, [audio, addActivity]);
+  }, [audio, addActivity, backendReady, voiceInputUnavailable]);
 
   /** Stop the recorder's tracks and hand back the audio level hook. */
   const releaseMicrophone = useCallback((recorder) => {
@@ -438,10 +470,9 @@ function App() {
   async function sendMessage(textOverride) {
     const userMessage = (textOverride ?? message).trim();
     if (!userMessage || loading || !activeConversation) return;
-    if (!backendReady) {
-      setError("Zoe cannot connect to the assistant. Check that the backend is running and try again.");
-      return;
-    }
+    // No health check here on purpose: an offline backend is a failed request,
+    // not a reason to refuse to try. api.js turns the connection failure into a
+    // BackendError, which is shown verbatim and keeps the turn retryable.
 
     const conversationId = activeConversation.id;
     addActivity("INPUT", userMessage);
@@ -591,7 +622,7 @@ function App() {
         {mobileSidebarOpen && <button className="mobile-scrim" aria-label="Close sidebar" onClick={() => setMobileSidebarOpen(false)} />}
 
         <main className="main-content">
-          <div className="mobile-topline"><button onClick={() => setMobileSidebarOpen(true)} aria-label="Open conversations"><Icon name="chat" /></button><span>{assistantConfig.assistantName}</span><span className="mobile-status"><i className={backendReady ? "online" : "offline"} /> {backendReady ? "Online" : "Starting..."}</span></div>
+          <div className="mobile-topline"><button onClick={() => setMobileSidebarOpen(true)} aria-label="Open conversations"><Icon name="chat" /></button><span>{assistantConfig.assistantName}</span><span className="mobile-status"><i className={backendReady ? "online" : "offline"} /> {backendReady ? "Online" : backendChecked ? "Offline" : "Checking..."}</span></div>
           <aside className="right-widgets">
             <div className="clock-card glass-panel"><div className="clock-card-top"><span>{dateText}</span><Icon name="sun" size={22} /></div><div className="clock-card-time">{timeText}</div><div className="clock-card-greeting">{getGreeting(now)}</div></div>
             <div className="quote-card glass-panel"><span className="quote-mark">“</span><p>Small steps every day lead to big results.</p></div>
@@ -634,21 +665,30 @@ function App() {
           </section>
 
           <div className="composer-zone">
+            {/* Typing is never blocked by backend state: the composer stays
+                usable offline and only the send reports the failure. This
+                notice says so instead of leaving the user to guess. */}
+            {backendOffline && (
+              <p className="composer-offline" role="status">
+                Backend offline. Start it with <code>python -m uvicorn server:app --host 127.0.0.1 --port 8001</code>, or launch the UI with <code>npm run dev:desktop</code>. You can keep typing.
+              </p>
+            )}
             <form className="composer glass-panel" onSubmit={(event) => { event.preventDefault(); sendMessage(); }}>
               <button type="button" className="attach-button" aria-label="Attachment (not yet available)" title="Attachments are not available yet"><Icon name="attach" size={21} /></button>
               <textarea className="composer-input" rows="1" value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={onComposerKeyDown} disabled={loading} placeholder={`Message ${assistantConfig.assistantName}...`} aria-label={`Message ${assistantConfig.assistantName}`} />
               <button type="submit" className="send-button" disabled={loading || !message.trim()} aria-label="Send message" title="Send message"><Icon name="send" size={21} /></button>
             </form>
             <div className="composer-tools">
-              {/* Voice input: disabled only when the backend says it cannot
-                  transcribe, and its label always reflects real state. */}
+              {/* Voice input: enabled unless the backend has definitively said
+                  it cannot transcribe. An offline backend is a live error on
+                  click, not a dead button. */}
               <button
                 className={`tool-chip ${isVoiceActive ? "is-on" : ""} ${voiceState === VoiceState.ERROR ? "has-error" : ""}`}
                 onClick={toggleVoice}
-                disabled={!backendReady || capabilities?.voice_input_available === false}
+                disabled={voiceInputUnavailable}
                 aria-label={voiceStateLabel[voiceState]}
                 title={
-                  capabilities?.voice_input_available === false
+                  voiceInputUnavailable
                     ? "Speech recognition is unavailable on the backend. Use the text box."
                     : voiceStateLabel[voiceState]
                 }
@@ -692,7 +732,7 @@ function App() {
         </main>
       </div>
 
-      {showSettings && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowSettings(false); }}><section className="settings-modal glass-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title"><button className="modal-close" onClick={() => setShowSettings(false)} aria-label="Close settings"><Icon name="close" /></button><div className="settings-icon"><Icon name="settings" size={26} /></div><h2 id="settings-title">Settings</h2><p>Zoe's interface preferences</p><div className="setting-row"><span><strong>Assistant</strong><small>Personal AI companion</small></span><b>{assistantConfig.assistantName}</b></div><div className="setting-row"><span><strong>Chat history</strong><small>Saved in this browser</small></span><b>{conversations.length} chats</b></div><div className="setting-row"><span><strong>Voice output</strong><small>Speak responses aloud</small></span><b>{voiceOutputEnabled ? "On" : "Off"}</b></div><div className="setting-row"><span><strong>Backend</strong><small>Zoe assistant API</small></span><b>{backendReady ? "Connected" : "Disconnected"}</b></div>
+      {showSettings && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowSettings(false); }}><section className="settings-modal glass-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title"><button className="modal-close" onClick={() => setShowSettings(false)} aria-label="Close settings"><Icon name="close" /></button><div className="settings-icon"><Icon name="settings" size={26} /></div><h2 id="settings-title">Settings</h2><p>Zoe's interface preferences</p><div className="setting-row"><span><strong>Assistant</strong><small>Personal AI companion</small></span><b>{assistantConfig.assistantName}</b></div><div className="setting-row"><span><strong>Chat history</strong><small>Saved in this browser</small></span><b>{conversations.length} chats</b></div><div className="setting-row"><span><strong>Voice output</strong><small>Speak responses aloud</small></span><b>{voiceOutputEnabled ? "On" : "Off"}</b></div><div className="setting-row"><span><strong>Backend</strong><small>Zoe assistant API</small></span><b>{backendStatus}</b></div>
             {capabilities && <div className="setting-row"><span><strong>Models ready</strong><small>Configured and usable right now</small></span><b>{capabilities.models_usable}</b></div>}
             {capabilities && <div className="setting-row"><span><strong>Speech input</strong><small>Local speech recognition</small></span><b>{capabilities.voice_input_available ? "Available" : "Unavailable"}</b></div>}
             {capabilities && <div className="setting-row"><span><strong>Speech output</strong><small>{capabilities.tts_engine} engine</small></span><b>{capabilities.voice_output_available ? "Available" : "Unavailable"}</b></div>}
