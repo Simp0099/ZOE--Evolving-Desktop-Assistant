@@ -1,0 +1,5 @@
+Zoe UI readability/layout update
+
+This is a replacement frontend folder based on your existing Zoe-UI project. It includes the stronger glass panels, more readable sidebar/search/history/time/quote, the mountain-lake background, and responsive spacing so the quick action cards do not overlap the right widgets on wide screens.
+
+To test: open this folder in VS Code, run npm install if needed, then npm run dev. For the Electron desktop window, keep your existing Electron setup and run npm run desktop after dependencies are installed. This update does not change backend, voice logic, or IoT code.

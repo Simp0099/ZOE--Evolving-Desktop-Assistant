@@ -1,0 +1,43 @@
+# Core Configuration & Environment
+python-dotenv>=1.0.0
+PyYAML>=6.0.1
+
+# Brain Swap (Phase 2 - Google Gen AI)
+google-genai>=1.0.0
+
+# Tools & APIs
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+wikipedia>=1.4.0
+pyjokes>=0.7.0
+PyDictionary>=2.0.1
+pywikihow>=0.5.7
+Pillow>=10.0.0
+
+# Optional extras. Every one of these is imported lazily inside a try/except,
+# so the app starts and the rest of the suite runs without them; only the
+# matching tool degrades. Install the ones you want:
+#   pip install pyautogui   # take_screenshot  (fails soft: logs and returns "")
+#   pip install pywhatkit   # play_music        (fails soft: falls back to a YouTube search)
+#   pip install pyttsx3     # TTS fallback engine, only when speech.tts_engine is "pyttsx3"
+# pyautogui>=0.9.54
+# pywhatkit>=5.4
+# pyttsx3>=2.90
+
+# Speech I/O (STT / TTS) — Phase 5
+sounddevice>=0.4.6
+faster-whisper>=1.0.0
+soundfile>=0.12.1
+# Optional local STT + Kokoro TTS / pyttsx3 engines (Python 3.10-3.12 for Kokoro)
+# Phase 4 voice input consumes its PCM from the shared microphone stream instead
+# of opening a second capture device.
+SpeechRecognition>=3.10.0
+
+# Wake Word Detection (Phase 6 - openWakeWord)
+openwakeword>=0.6.0
+numpy>=1.21.6
+scipy>=1.10
+
+# Webcam perception (Phase 3, opt-in via vision.webcam.enabled). Imported lazily
+# and only when the webcam is actually enabled; the app runs fine without it.
+opencv-python>=4.8.0

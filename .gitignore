@@ -1,0 +1,67 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Runtime data and generated artifacts
+data/
+screenshots/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.log.*
+*.ses
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg
+
+# Local configuration that may contain credentials. config.yaml itself is
+# tracked and is safe (it uses api_key_env indirection); config.local.yaml and
+# friends are not.
+config.local.yaml
+config.*.local.yaml
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+
+# Node / frontend
+node_modules/
+frontend/zoe/dist/
+frontend/zoe/dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local editor files
+.vscode/
+.idea/
+
+# Browser-automation scratch output from local tooling
+.playwright-cli/

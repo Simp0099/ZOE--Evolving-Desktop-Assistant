@@ -1,0 +1,32 @@
+[project]
+name = "ai-partner-zoe"
+version = "2.0.0"
+description = "Ai Partner"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.29.0",
+    "python-multipart>=0.0.6",
+]
+
+# The file_reader plugin reads txt/md/csv/json from the standard library. These
+# three are optional: without them the plugin answers with a plain install
+# message instead of the file's contents.
+[project.optional-dependencies]
+reader = [
+    "pypdf>=4.0.0",
+    "python-docx>=1.1.0",
+    "openpyxl>=3.1.0",
+]
+server = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.29.0",
+    "python-multipart>=0.0.6",
+    "soundfile>=0.12.1",
+    "scipy>=1.10",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["zoe*"]
+exclude = ["tests*", "scripts*", "docs*", "data*", "plugins*", "frontend*"]

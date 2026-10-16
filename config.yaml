@@ -1,0 +1,658 @@
+# Zoe User Configuration
+# Centralized config — all settings are loaded dynamically by zoe/config.py
+
+assistant:
+  name: "Ai Partner"
+  greeting_name: "Boss"
+  default_language: "en-in"
+
+# Directory listing is read-only and restricted to these resolved roots.
+file_access:
+  allowed_roots: [".", "data"]
+
+llm:
+  provider: "gemini"
+  model: "gemini-3.6-flash"
+  # Legacy single-model fallback list, retained for compatibility.
+  # Phase 0.5 routing uses the `models:` + `routing:` blocks below instead.
+  fallback_models:
+    - "gemini-3.5-flash-lite"
+  max_model_attempts: 2
+  max_tool_rounds: 8          # Safety bound on tool-call round trips per user message
+  temperature: 0.7
+  max_output_tokens: 1024
+  max_history_messages: 20    # Cap conversation history to control token usage
+
+# ============================================================================
+# Phase 0.5 — provider-agnostic model layer
+# ============================================================================
+# Providers are defined here; credentials come from the environment variable
+# named by `api_key_env`. Never put a key in this file.
+providers:
+
+  gemini:
+    type: gemini
+    enabled: true
+    api_key_env: GEMINI_API_KEY
+    default_model: "gemini-3.6-flash"
+    context_window: 1048576
+
+  openrouter:
+    type: openai_compatible
+    enabled: true
+    api_key_env: OPENROUTER_API_KEY
+    base_url: "https://openrouter.ai/api/v1"
+    context_window: 1000000
+
+  # OpenCode Zen serves an OpenAI-compatible API and hosts the community
+  # "Space Bunny" / "Big Pickle" models. Verified against its /models endpoint;
+  # these are NOT OpenRouter models.
+  opencode_zen:
+    type: openai_compatible
+    enabled: true
+    api_key_env: OPENCODE_ZEN_API_KEY
+    base_url: "https://opencode.ai/zen/v1"
+    context_window: 1048576
+
+# ---------------------------------------------------------------------------
+# Model registry. Adding/removing/disabling a model is a change to this block
+# only — no Python edits required.
+#
+# `verified: true` means the model id, context length, free status and
+# tool-calling support were checked against the live provider catalog.
+# `verified: false` means those claims are UNCONFIRMED; the router penalises
+# unverified models so they cannot silently outrank verified ones.
+# ---------------------------------------------------------------------------
+models:
+
+  # ---- Google Gemini (verified live) ----
+  gemini_flash:
+    provider: gemini
+    model: "gemini-3.6-flash"
+    enabled: true
+    priority: 90
+    free: false
+    context_window: 1048576
+    max_output_tokens: 8192
+    verified: true
+    verified_on: "2026-10-06"
+    notes: "Returned 429 on the free tier during testing; gemini_3_5_flash_lite responded."
+    capabilities:
+      reasoning: true
+      coding: true
+      conversation: true
+      tool_calling: true
+      vision: true
+      structured_output: true
+      long_context: true
+      streaming: true
+    task_affinity:
+      coding: 10
+      reasoning: 10
+
+  gemini_flash_lite:
+    provider: gemini
+    model: "gemini-3.5-flash-lite"
+    enabled: true
+    priority: 70
+    free: false
+    context_window: 1048576
+    max_output_tokens: 8192
+    verified: true
+    verified_on: "2026-10-06"
+    notes: "Confirmed responding live ('2+2' -> '4') when gemini-3.6-flash was quota-limited."
+    capabilities:
+      reasoning: true
+      coding: true
+      conversation: true
+      tool_calling: true
+      vision: true
+      structured_output: true
+      long_context: true
+      streaming: true
+    task_affinity:
+      casual_conversation: 10
+
+  # ---- OpenRouter free models (catalog-verified, live calls unverified) ----
+  nemotron_3_5_lightning:
+    provider: openrouter
+    model: "nvidia/nemotron-3.5-lightning:free"
+    enabled: true
+    priority: 85
+    free: true
+    context_window: 1000000
+    max_output_tokens: 8192
+    verified: true
+    verified_on: "2026-10-06"
+    notes: "Catalog confirms 1M context and tools support. Live call unverified: no OPENROUTER_API_KEY configured."
+    capabilities:
+      reasoning: true
+      coding: true
+      conversation: true
+      tool_calling: true
+      vision: false
+      structured_output: true
+      long_context: true
+      streaming: true
+    task_affinity:
+      coding: 15
+      reasoning: 15
+
+  nemotron_3_ultra:
+    provider: openrouter
+    model: "nvidia/nemotron-3-ultra-550b-a55b:free"
+    enabled: true
+    priority: 80
+    free: true
+    context_window: 1000000
+    max_output_tokens: 8192
+    verified: true
+    verified_on: "2026-10-06"
+    notes: "Catalog confirms 1M context and tools support. Live call unverified."
+    capabilities:
+      reasoning: true
+      coding: true
+      conversation: true
+      tool_calling: true
+      vision: false
+      structured_output: true
+      long_context: true
+      streaming: true
+    task_affinity:
+      reasoning: 20
+
+  nemotron_3_super:
+    provider: openrouter
+    model: "nvidia/nemotron-3-super-120b-a12b:free"
+    enabled: true
+    priority: 75
+    free: true
+    context_window: 262144
+    max_output_tokens: 8192
+    verified: true
+    verified_on: "2026-10-06"
+    notes: "Catalog confirms 256k context and tools support. Live call unverified."
+    capabilities:
+      reasoning: true
+      coding: true
+      conversation: true
+      tool_calling: true
+      vision: false
+      structured_output: true
+      long_context: true
+      streaming: true
+
+  # DISABLED: the upstream model was retired. A live call returns HTTP 404
+  # "No endpoints found for inclusionai/ling-3.0-flash-sante:free", which the
+  # router classifies as invalid_request (non-retryable) -- so ranking it first
+  # aborted the entire fallback chain with 404 instead of falling through to a
+  # working model. Same failure mode as `big_pickle` below. Re-enable only after
+  # a live call succeeds; a config entry is not proof the model still exists.
+  inclusionai_ling_3_flash:
+    provider: openrouter
+    model: "inclusionai/ling-3.0-flash-sante:free"
+    enabled: false
+    priority: 70
+    free: true
+    context_window: 262144
+    max_output_tokens: 8192
+    verified: false
+    verified_on: "2026-10-06"
+    notes: "Catalog confirms 256k context and tools support. Live call unverified."
+    capabilities:
+      reasoning: false
+      coding: true
+      conversation: true
+      tool_calling: true
+      vision: false
+      structured_output: false
+      long_context: true
+      streaming: true
+    task_affinity:
+      casual_conversation: 15
+
+  # ---- OpenCode Zen community free models (catalog-verified) ----
+  # DISABLED: a live call returns HTTP 403 FreeTierError -- OpenCode's free tier
+  # can only be used from within the OpenCode client, so this is unreachable from
+  # the assistant process. 403 is an auth error (non-retryable), so ranking it
+  # aborted the whole fallback chain instead of trying the next model. Same
+  # failure mode as `big_pickle` below. Re-enable only if that restriction lifts.
+  space_bunny_free:
+    provider: opencode_zen
+    model: "space-bunny-free"
+    enabled: false
+    priority: 78
+    free: true
+    context_window: 1048576
+    max_output_tokens: 8192
+    verified: true
+    verified_on: "2026-10-06"
+    notes: "ID verified on https://opencode.ai/zen/v1/models. NOT an OpenRouter model. Live call unverified: no OPENCODE_ZEN_API_KEY configured."
+    capabilities:
+      reasoning: true
+      coding: true
+      conversation: true
+      tool_calling: false
+      vision: false
+      structured_output: false
+      long_context: true
+      streaming: false
+
+  # KNOWN ROUTING ISSUE — disabled until API accessibility is verified.
+  # `big-pickle` is listed in the Zen catalog and is priced Free, but a live
+  # call returned HTTP 403 {"type":"FreeTierError","message":"OpenCode's free
+  # tier can only be used from within OpenCode"}. It is therefore unusable
+  # from this client. Keeping it enabled was actively harmful: the 403 is
+  # classified as an auth error (non-retryable), so selecting it aborted the
+  # whole request instead of falling back. Re-enable only after a live call
+  # from outside the OpenCode client succeeds.
+  big_pickle:
+    provider: opencode_zen
+    model: "big-pickle"
+    enabled: false
+    priority: 68
+    free: true
+    context_window: 262144
+    max_output_tokens: 8192
+    verified: true
+    verified_on: "2026-10-06"
+    notes: "ID and $0 pricing verified against https://opencode.ai/docs/zen and the /models catalog. DISABLED: live call returned HTTP 403 FreeTierError ('free tier can only be used from within OpenCode'), so it cannot be routed to from this client. tool_calling marked false because the Zen catalog does not advertise it and generation is blocked entirely."
+    capabilities:
+      reasoning: true
+      coding: true
+      conversation: true
+      tool_calling: false
+      vision: false
+      structured_output: false
+      long_context: true
+      streaming: false
+    task_affinity:
+      creative: 15
+
+# ---------------------------------------------------------------------------
+# Router configuration. Deterministic weighted scoring; no model calls, no ML.
+# ---------------------------------------------------------------------------
+routing:
+  enabled: true
+  strategy: capability_score
+
+  # Weights sum to 1.0 (normalised at load time).
+  capability_weight: 0.30    # can the model actually do this task
+  task_weight: 0.25          # declared affinity for the classified task
+  reliability_weight: 0.25   # measured success rate
+  latency_weight: 0.10       # measured latency, bounded so it cannot dominate
+  priority_weight: 0.10      # operator-configured preference
+
+  cooldown_seconds: 60       # base backoff after a retryable failure
+  max_attempts: 4            # max models tried in one request before failing
+  probe_cooling_models: true # retry the nearest-to-expiry model instead of deadlocking
+  # Consecutive 429s after which a model counts as having spent its daily quota
+  # and is parked until the provider's reset, rather than burning the remaining
+  # quota on retries. null disables the cap.
+  daily_request_cap: 5
+  latency_reference_ms: 4000 # latency at which the latency score reaches ~0.5
+
+debug:
+  # Development-only: log exact user input, routing decision, chosen model.
+  log_input: false
+
+weather:
+  default_city: "Faridabad"
+
+# ============================================================================
+# Local applications (Phase 3) — safe application launching
+# ============================================================================
+# Only applications listed here may be launched by the local launch handler
+# (`open -a` via argument-list subprocess, never a shell). Matching is
+# case-insensitive; anything else is rejected locally with no provider call.
+# Default deny: an empty or missing list means nothing is launchable.
+# Plugin tools: one .py file per tool in plugins/ (see plugins/_template.py).
+plugins:
+  timeout_s: 10              # a plugin still running after this is stopped
+  # Ceiling on one plugin result, in characters. Raised from the 4000 default
+  # so read_file can return a 12000-character document with its closing fence;
+  # a result cut here loses its truncation notice, so keep it >= file_reader.max_chars.
+  max_result_chars: 14000
+
+applications:
+  # THIS MAP IS THE ALLOWLIST. Anything not in it is refused, and nothing else
+  # ever reaches the OS.
+  #
+  # Each key is a name the assistant should understand, matched
+  # case-insensitively and ignoring trailing sentence punctuation, so
+  # "open safari." finds `Safari`. The key is also what the assistant says back,
+  # so capitalise it the way you want to hear it.
+  #
+  # Each value gives the launch command per operating system, as an ARGUMENT
+  # LIST: the first item is the executable, the rest are its arguments. A shell
+  # is never used, so there is nothing to quote and no way for a spoken name to
+  # become shell syntax. Write `open -a Safari` as ["open", "-a", "Safari"].
+  #
+  # Omit an OS to say "I have no way to launch this one there" -- the assistant
+  # will say exactly that rather than guessing a command.
+  aliases:
+    WhatsApp:
+      Darwin: ["open", "-a", "WhatsApp"]
+      Windows: ["C:\\Program Files\\WhatsApp\\WhatsApp.exe"]
+      Linux: ["whatsapp"]
+    Safari:
+      Darwin: ["open", "-a", "Safari"]
+      Windows: ["C:\\Program Files\\Safari\\Safari.exe"]
+      Linux: ["safari"]
+    Terminal:
+      Darwin: ["open", "-a", "Terminal"]
+      Windows: ["wt.exe"]
+      Linux: ["x-terminal-emulator"]
+
+  # Denylist: applications that require explicit user confirmation even when
+  # discovered. These are sensitive system applications that could affect
+  # system stability or security. The assistant will warn the user before
+  # offering to launch them.
+  denylist:
+    - "Terminal"
+    - "Activity Monitor"
+    - "System Preferences"
+    - "System Settings"
+    - "Keychain Access"
+    - "Console"
+    - "Disk Utility"
+    - "Activity Monitor"
+    - "1Password"
+    - "Bitwarden"
+    - "LastPass"
+    - "KeePassXC"
+
+contacts:
+  # Email contact aliases
+  # mom: "example_mom@gmail.com"
+  # primary: "user@example.com"
+
+locations:
+  # Optional custom map search target
+  default_maps_query: "Delhi"
+
+speech:
+  tts_engine: "kokoro"
+  kokoro_voice: "af_heart"
+  kokoro_lang: "a"
+  kokoro_speed: 1.0
+  pyttsx3_rate: 180
+  # INERT KEY — kept for backwards compatibility. Nothing reads it.
+  # zoe/speech_pipeline.py::Transcriber always tries faster-whisper first and
+  # falls back to Google Speech (speech_recognition) only when the local package
+  # cannot be imported, so remote ASR is a consequence of faster-whisper being
+  # absent, not of this setting. Setting it to "google" does NOT enable a remote
+  # path and "local" does not disable one. To force fully offline ASR, uninstall
+  # faster-whisper and SpeechRecognition is never reached.
+  asr_engine: "local"
+  asr_timeout_seconds: 15
+
+# Local speech recognition (faster-whisper). The model is a config value rather
+# than a hard-coded default so the accuracy/latency tradeoff is a one-line edit.
+# distil-large-v3 is the accuracy choice; if warm transcription latency is too
+# high on this machine, set model to "small.en" and re-measure with
+# `python scripts/first_audio_check.py --reps 3`.
+asr:
+  model: "small.en"
+  compute_type: "int8"
+
+# ============================================================================
+# Voice (Phase 4) — wake word, endpointing, conversation window
+# ============================================================================
+# The wake word is opt-in, like the webcam. While `enabled` is false the
+# microphone is never opened, the wake-word model is never loaded, and voice
+# turns nothing off: text conversation is unaffected either way.
+wake_word:
+  enabled: true
+  model: "hey_jarvis"        # Pre-trained model: hey_jarvis, hey_mycroft, alexa, etc.
+  threshold: 0.5             # Confidence threshold (0.0-1.0), higher = more strict
+  # Assistant speech ignored after playback stops, so the tail of a reply cannot
+  # re-trigger the wake word through the speakers.
+  echo_cooldown_seconds: 0.6
+  # Multi-phrase wake configuration (Phase 8). Each entry names its own
+  # openWakeWord model and threshold; all active models share the one
+  # microphone stream via a single inference call. Only entries verified
+  # against the installed openWakeWord 0.6.0 catalog may be enabled: that is
+  # just "hey_jarvis". "jarvis" has no verified built-in model and stays
+  # disabled until a custom model is provided -- a config entry is not proof
+  # of phrase support. Legacy `model`/`threshold` above remain the fallback
+  # when `phrases` is absent.
+  phrases:
+    - phrase: "hey jarvis"
+      model: "hey_jarvis"
+      threshold: 0.5
+      enabled: true
+    - phrase: "jarvis"
+      model: ""
+      threshold: 0.5
+      enabled: false
+
+# Voice activity detection (energy based, local, no extra dependency).
+vad:
+  energy_threshold: 0.01     # RMS (0..1) at which a frame counts as voiced
+  min_speech_ms: 200         # voiced time before a burst is a real utterance
+  end_silence_ms: 700        # quiet time that ends the utterance
+  barge_in_ms: 300           # voiced time needed to interrupt the assistant
+  # Speech starting within this many ms of our own playback is ignored as
+  # probable speaker bleed. OFF by default (0): it also delays a genuine early
+  # interruption, and the echo canceller is the real fix. Try 800-1000 on a
+  # laptop speaker if self-interruption persists; leave 0 with headphones.
+  # Tradeoff: a larger grace window suppresses more self-interruption but delays a genuine early interruption by the same amount.
+  barge_in_grace_ms: 0
+  # Speech must clear the measured room floor by these margins. The absolute
+  # threshold above is only the floor of that decision, so a quiet room behaves
+  # as configured and a noisy one stops reading the noise as speech.
+  snr: 3.0
+  barge_in_snr: 4.0
+  # barge_in_threshold defaults to 2x energy_threshold; uncomment to override.
+  # barge_in_threshold: 0.02
+  # (measured: the VAD noise floor tracks toward our own playback when it is not
+  # cancelled, so this margin is what decides whether the user can still
+  # interrupt. See docs/barge_in_diagnosis.md.)
+  # Band-energy echo guard: barge-in is allowed only when the residual after
+  # subtracting a learned estimate of our own playback clears the barge-in bar
+  # for several consecutive 20 ms frames. A reply through the speakers is as loud
+  # as the user, so loudness alone cannot tell them apart; the residual can.
+  # Set echo_guard_enabled false to fall back to the plain loudness test.
+  echo_guard_enabled: true
+  # Frames (20 ms) the residual must stay above the bar before a frame counts as
+  # the user, so one echo spike cannot cut a reply.
+  echo_guard_min_consecutive_frames: 3
+  # Ceiling on the learned per-band echo gain, so the guard can never subtract an
+  # arbitrary multiple of what we played.
+  echo_guard_gain_max: 1.5
+  # Measure the bar as well as apply it. The guard then compares the share of
+  # the microphone's energy that our own playback does NOT explain against the
+  # worst share this room has been seen to leave, instead of against a fixed
+  # constant. On a loud or reverberant speaker the residual of a perfectly
+  # explained echo is still above any fixed bar tuned in a quiet room, which is
+  # how the assistant used to interrupt itself. Learned only from sub-frames
+  # that are not the user's speech, so a person talking over a reply cannot lift
+  # the bar over themselves. First ~1s of each reply behaves as before, while
+  # the room is still being measured.
+  # Set false to restore the fixed-threshold decision exactly.
+  # NOT VERIFIED on hardware -- TODO: the dedicated validation write-up was
+  # never written. Until it is, barge_in_diagnosis.md section 7 and the manual
+  # procedure in docs/archive/PHASE_E_MANUAL_CHECKLIST.md are the record.
+  echo_guard_adaptive_bar: true
+
+conversation:
+  follow_up_window_s: 8      # keep listening this long after speaking
+  sample_rate: 16000         # int16 mono; shared by wake word, VAD and ASR
+  frame_ms: 80               # 80ms frames (~200 wake-word inferences/second)
+  tts_chunk_ms: 220          # speech synthesis chunk size
+  # input_device: 1          # microphone index; omit for the system default
+  # output_device: 2         # speaker index; omit for the system default
+
+# A disconnected microphone is reopened with a backoff instead of killing the
+# voice loop. After input_reopen_attempts consecutive failures the assistant
+# says it lost the microphone and rests.
+audio:
+  input_reopen_attempts: 5
+  # Base backoff in ms; doubles each attempt (0.5s, 1s, 2s), capped at 5s.
+  input_reopen_backoff_ms: 500
+
+  # Device profiles. A profile is selected at startup by matching the OUTPUT
+  # device name against its `match` substrings (case-insensitive, first match
+  # wins), and overrides the values below for that run only. A device that
+  # matches nothing uses the vad: values above, unchanged.
+  #
+  # The speaker-to-microphone path is what barge-in is actually about: a reply
+  # through the built-in speakers comes back through the mic as loudly as the
+  # user, so any threshold that lets a person interrupt also lets the assistant
+  # interrupt itself. With headphones there is no such path, and a raised bar
+  # would only make real interruptions harder.
+  #
+  # Measured on a MacBook Air built-in speaker and microphone, the
+  # self-interruption lands 0.80-0.97 s into every reply, with the microphone
+  # reading 0.19-0.51 RMS against a barge-in bar of 0.02-0.046. See
+  # docs/barge_in_diagnosis.md.
+  #
+  # WARNING: this is a mitigation, not the fix. Raising the bar only helps while
+  # the leak sits below it, and it costs real interruptions. The actual repair
+  # is the canceller.
+  profiles:
+    builtin_speaker:
+      # Matches "MacBook Air Speakers", "Built-in Output", "MacBook Pro
+      # Speakers" and anything else naming the machine's own speakers.
+      match: ["macbook", "built-in", "builtin"]
+      # How much louder than the measured room floor speech must be to
+      # interrupt. Default 4.0.
+      barge_in_snr: 8.0
+      # Voiced time required to interrupt, in ms. Default 300. Interrupting
+      # mid-sentence should take real intent on a speaker that leaks.
+      barge_in_ms: 600
+
+# Approved roots for the file_reader plugin. Anything outside them is rejected,
+# as is a symlink that points outside them or a file over max_bytes.
+file_reader:
+  roots:
+    - "~/Documents"
+    - ~/Downloads
+    - ~/Desktop
+  max_bytes: 20971520        # 20 MB, checked on the open descriptor
+  max_chars: 12000           # characters handed to the model when a question is given
+  summary_chars: 2000        # characters handed to the model when it is not
+  max_pdf_pages: 50          # PDF pages read; ponytail ceiling, raise if ever needed
+
+# Spoken acknowledgment while the main model thinks, so a slow reply does not read
+# as a hang. Median thinking is ~4.5s; the ack fires only if the reply has not
+# started within ack_delay_ms, plays through the same playback queue (so barge-in
+# and cancel still work), and never overlaps the reply.
+voice:
+  ack_enabled: true
+  ack_delay_ms: 800
+  # "cached" = fixed clips, no model call. "model" = ask the configured model.
+  ack_mode: "cached"
+  # Hard cap on spoken replies, in words. Longer replies are truncated at a
+  # sentence boundary and offered more detail.
+  max_spoken_words: 60
+  # Generation cap for a SPOKEN turn only, in tokens. The prompt asks for one to
+  # three sentences; this stops a model that ignores the ask from producing a
+  # paragraph of audio. ~220 tokens is a short paragraph, so a reply that
+  # genuinely needs more is cut at a sentence boundary and offered more detail.
+  max_output_tokens: 220
+  # Typed conversations keep llm.max_output_tokens. Set this only if you really
+  # want long answers capped as well; a written reply is not a wall of sound.
+  # text_max_output_tokens: 220
+
+# ============================================================================
+# Conversation state (Phase 5) -- how Zoe is talking right now
+# ============================================================================
+# Personality ("who Zoe is") is the identity prompt and is not configured
+# here. This is the dynamic layer around it: the tone of the current
+# conversation. It decays, and it is never written to memory.
+conversation_state:
+  enabled: true
+
+  defaults:
+    mood: neutral
+    conversation_mode: casual
+    energy: 0.55
+    warmth: 0.75
+    curiosity: 0.60
+
+  decay:
+    enabled: true
+    half_life_seconds: 300   # temporary state relaxes back to defaults
+
+# ============================================================================
+# Proactive Partner (Phase 6)
+# ============================================================================
+# When Zoe may initiate conversation. All gates are conservative by default.
+# The default answer is NO — most observations result in silence.
+proactive:
+  enabled: true
+
+  # Global cooldown in seconds after any proactive interaction.
+  # Prevents repeated speech on the same event.
+  global_cooldown_seconds: 300
+
+  # Per-reason cooldown overrides (seconds). Same reason won't trigger again
+  # within this window.
+  per_reason_cooldown_seconds: {}
+
+  # Maximum proactive interactions per rolling window.
+  max_interactions_per_window: 3
+  window_seconds: 3600  # rolling window for the limit above
+
+  # Availability gates
+  require_available: true
+  probably_available_evidence:
+    - "recent user interaction"
+    - "explicit user request"
+    - "no active conversation"
+    - "cooldown expired"
+
+  # Deduplication
+  dedup_window_seconds: 600  # same reason won't trigger twice within this window
+
+  # Quiet hours — when proactive is suppressed regardless of other gates
+  quiet_hours:
+    enabled: false
+    start_hour: 22   # 10 PM
+    end_hour: 8      # 8 AM
+
+  # Confidence threshold for a candidate to even be considered
+  confidence_threshold: 0.5
+
+  # Observation gating
+  require_persistence: true  # one-frame observations are not meaningful
+  min_repeat_observations: 2  # consecutive meaningful readings before candidacy
+
+  # Style/tone integration
+  tone_influence: true  # Phase 5 tone influences proactive wording
+  style_hint_weight: 0.3  # how much tone shapes (0.0-1.0), never overrides
+
+# ============================================================================
+# Vision / Perception (Phase 3)
+# ============================================================================
+# Images you attach are always analysed — there is nothing to enable for that.
+# The webcam is a separate, deliberate opt-in and is OFF unless you turn it on.
+vision:
+  enabled: true
+
+  webcam:
+    # The camera is never opened unless this is true. Default is false.
+    enabled: false
+    device: 0                 # 0 = default camera
+    interval_seconds: 10      # sample one frame this often
+    analysis_cooldown_seconds: 120   # hard ceiling on vision calls
+    # Fraction of the frame that must have changed for a frame to be analysed.
+    # 0.02 catches a person arriving/leaving and objects appearing/going, and
+    # ignores lighting drift and sensor noise entirely. Fine changes (glasses)
+    # score ~0.012; lower this to 0.005 to catch them -- the cooldown above
+    # still bounds the cost.
+    change_threshold: 0.02
+    change_noise_floor: 0.06        # brightness move counted as a real change
+    comparison_size: 32             # edge size frames are reduced to for comparison
+    context_ttl_seconds: 600  # how long the current visual context stays usable
+    max_observations: 6       # observations kept in the current visual context
+    max_frame_side: 640       # frames are downscaled to this before analysis
+    jpeg_quality: 70
+
+logging:
+  # Phase 8: Rotating file logging
+  level: "INFO"              # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  max_bytes: 1000000         # 1 MB per log file before rotation
+  backup_count: 3            # Number of backup files to keep

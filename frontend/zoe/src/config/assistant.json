@@ -1,0 +1,19 @@
+{
+  "assistantName": "Zoe",
+  "tagline": "Your Personal AI Assistant",
+  "greeting": "Hi, I'm {name}",
+  "greetingSub": "Your personal AI assistant, always here for you.",
+  "accentWord": "{name}",
+  "quickActions": [
+    "Chat",
+    "Get Help",
+    "Create",
+    "Code",
+    "Search"
+  ],
+  "composerTools": [
+    "Voice",
+    "Web Search",
+    "Deep Think"
+  ]
+}

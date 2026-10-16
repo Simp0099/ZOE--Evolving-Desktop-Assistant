@@ -1,0 +1,3 @@
+FAILED tests/test_phase3_appdiscovery.py::TestDiscoveryInternals::test_installed_apps_strips_the_app_suffix_and_dedupes
+FAILED tests/test_phase3_appdiscovery.py::TestDiscoveryInternals::test_duplicates_across_directories_collapse
+26 failed, 1413 passed, 1 skipped, 13 xfailed, 6 warnings in 102.34s (0:01:42)

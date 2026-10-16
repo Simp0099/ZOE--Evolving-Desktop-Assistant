@@ -1,0 +1,39 @@
+........................................................................ [  5%]
+........................................................................ [ 11%]
+........................................................................ [ 17%]
+........................................................................ [ 23%]
+........................................................................ [ 29%]
+........................................................................ [ 35%]
+........................................................................ [ 41%]
+........................................................................ [ 47%]
+........................................................................ [ 52%]
+........................................................................ [ 58%]
+........................................................................ [ 64%]
+........................................................................ [ 70%]
+........................................................................ [ 76%]
+........................................................................ [ 82%]
+...................................s.................................... [ 88%]
+........................................................................ [ 94%]
+........................................................................ [ 99%]
+.                                                                        [100%]
+=============================== warnings summary ===============================
+tests/test_integration.py::TestSpeechIntegration::test_speak_function
+tests/test_speech_self_interrupt.py::TestPlaybackPathIntegrity::test_playback_runs_to_completion_without_cancellation
+  <PROJECT_ROOT>/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py:123: UserWarning: dropout option adds dropout after all but last recurrent layer, so non-zero dropout expects num_layers greater than 1, but got dropout=0.2 and num_layers=1
+    warnings.warn(
+
+tests/test_integration.py::TestSpeechIntegration::test_speak_function
+tests/test_speech_self_interrupt.py::TestPlaybackPathIntegrity::test_playback_runs_to_completion_without_cancellation
+  <PROJECT_ROOT>/.venv/lib/python3.12/site-packages/torch/nn/utils/weight_norm.py:143: FutureWarning: `torch.nn.utils.weight_norm` is deprecated in favor of `torch.nn.utils.parametrizations.weight_norm`.
+    WeightNorm.apply(module, name, dim)
+
+tests/test_phase4_voice.py::TestTextCoexistence::test_unintelligible_speech_yields_no_transcript
+  <PROJECT_ROOT>/.venv/lib/python3.12/site-packages/speech_recognition/__init__.py:7: DeprecationWarning: 'aifc' is deprecated and slated for removal in Python 3.13
+    import aifc
+
+tests/test_phase4_voice.py::TestTextCoexistence::test_unintelligible_speech_yields_no_transcript
+  <PROJECT_ROOT>/.venv/lib/python3.12/site-packages/speech_recognition/__init__.py:8: DeprecationWarning: 'audioop' is deprecated and slated for removal in Python 3.13
+    import audioop
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1224 passed, 1 skipped, 6 warnings in 82.90s (0:01:22)
