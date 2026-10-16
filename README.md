@@ -222,4 +222,4 @@ attributes to Mark LV under CC BY-NC 4.0, which is non-commercial — see
   `actions/file_processor.py`; the model call and write actions were not
   ported. Attribution is owed and licence review is pending.
 - Third-party packages are credited by their own licences in `requirements.txt`
-  and `frontend/zoe/package.json`.
+  and `frontend/zoe/package.json`.# ZOE--Evolving-Desktop-Assistant
