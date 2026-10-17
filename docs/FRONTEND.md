@@ -18,30 +18,70 @@ terminal (`python -m zoe`) and this UI are two front ends on the same core.
 
 ## Processes
 
-There are **three** processes, and Electron does not start any of them:
+There are **three** processes. Two are started by `npm run dev:desktop`; the
+third is started by the Electron main process when it needs to be.
 
-1. **Backend** — `python -m uvicorn server:app --host 127.0.0.1 --port 8001`
-2. **Renderer** — the Vite dev server on `http://localhost:5173`
-3. **Electron main** — loads that URL in a `BrowserWindow`
+1. **Backend** — `python -m uvicorn server:app --host 127.0.0.1 --port 8001`.
+   Electron checks `GET /health` with a 1.5 s timeout before it creates a
+   window. If nothing answers, it spawns uvicorn itself with `cwd` at the
+   project root (derived from `__dirname`, never hard-coded), preferring
+   `.venv/bin/python` (`.venv\Scripts\python.exe` on Windows) and falling back to
+   `python3` / `python`. It then polls `/health` for up to 30 s.
+2. **Renderer** — the Vite dev server on `http://localhost:5173`.
+3. **Electron main** — loads that URL in a `BrowserWindow`, but only after the
+   dev server actually answers, so there is no blank-window race.
 
 ```bash
-python -m uvicorn server:app --host 127.0.0.1 --port 8001   # terminal 1
 cd frontend/zoe
 npm install
-npm run dev                                                  # terminal 2
-npm run desktop                                              # terminal 3
+npm run dev:desktop     # vite, then electron once :5173 answers
 ```
+
+### Backend lifecycle
+
+- **A backend that was already running is used as-is and never killed.** Only a
+  child process Electron spawned is killed, on `before-quit`.
+- If `/health` never answers within 30 s, Electron logs a clear error to the
+  terminal and **still opens the window**: seeing the honest offline state is
+  more useful than no window, and the UI stays fully usable for typing.
+- If the spawn fails outright (`ENOENT`, no interpreter), the failure and the
+  venv setup command are printed instead.
+
+### Offline is a state, not a dead end
+
+The composer is never disabled because the backend is down — only an in-flight
+request disables it. Instead:
+
+- a single inline notice above the composer states that the backend is offline
+  and gives the command to start it;
+- the send button stays clickable and reports the real error from `api.js`,
+  rather than silently doing nothing;
+- the mic button is disabled only when `/health` **definitively** says
+  `voice_input_available: false`. "Not checked yet" is not a reason to take the
+  microphone away; clicking it offline gives a clear error.
+
+The Settings modal shows **Checking…** during the first health check, then the
+real `Connected` / `Disconnected`. It previously showed "Disconnected" from the
+initial `false` state, which was a claim about the backend before anything had
+been asked.
 
 ## npm scripts
 
 | Script | Does |
 | --- | --- |
 | `npm run dev` | Vite dev server on :5173 |
+| `npm run dev:desktop` | Vite + Electron + backend, one command |
 | `npm run build` | Production bundle into `dist/` (git-ignored) |
 | `npm run preview` | Serve the built bundle |
-| `npm run desktop` | Launch Electron against :5173 |
+| `npm run desktop` | Launch Electron against :5173 (starts the backend if needed) |
 | `npm run lint` | oxlint |
-| `npm test` | `node --test src/` |
+| `npm test` | `node --test "src/**/*.test.js"` |
+
+`dev:desktop` runs `scripts/dev-desktop.mjs`, a ~50-line launcher, rather than
+adding `concurrently`: it needs no new dependency and no lockfile churn, and it
+gives exactly the two behaviours that matter here — Electron starts only once
+Vite answers on :5173, and either process exiting takes the other down, so no
+orphan is left behind.
 
 ## Renderer responsibilities
 
@@ -106,38 +146,40 @@ filesystem, no shell, no arbitrary IPC.
 These are real and not yet fixed. Do not read the app as production-ready
 because `npm run build` succeeds.
 
-1. **The main process does not launch the backend.** A failed or missing
-   backend shows the UI's offline state, but nothing starts `uvicorn` for you.
-2. **`electron.cjs` loads the dev-server URL unconditionally.** There is no
+1. **`electron.cjs` loads the dev-server URL unconditionally.** There is no
    `app.isPackaged` branch, so `dist/` is built but never loaded by Electron.
-   `npm run build` currently produces an artefact nothing consumes.
-3. **No navigation guards.** No `setWindowOpenHandler` and no `will-navigate`
+   `npm run build` currently produces an artefact nothing consumes. (The URL is
+   now *waited for* rather than loaded blind, but it is still the dev server.)
+2. **No navigation guards.** No `setWindowOpenHandler` and no `will-navigate`
    handler, so a link rendered by the UI could open a window outside those
    controls. The `ipcMain` handlers also do not verify `event.senderFrame`.
-4. **Shutdown is unverified.** The backend is not stopped by Electron; it is an
-   independent process you started by hand.
+3. **Shutdown is only partially verified.** A backend Electron spawned is killed
+   on `before-quit`, but the kill is not awaited and the window is not closed
+   first, so a hung uvicorn can outlive Electron by a moment.
+4. **The backend start is unverified on Linux and Windows.** The interpreter
+   lookup covers all three, but only the macOS path has been run.
 5. **Development and production differ only in that production does not exist
    yet.**
 
 ## Troubleshooting
 
 **Blank window.** The Vite dev server is not running on :5173. Run
-`npm run dev` before `npm run desktop`.
+`npm run dev` before `npm run desktop`, or just `npm run dev:desktop`. If the
+server never comes up, the window shows a short page saying exactly that,
+rather than a blank page.
 
 **"Zoe cannot connect to the assistant."** The backend is not up. Check
-`curl http://127.0.0.1:8001/health`. If nothing answers, start uvicorn. If it
-answers but the UI still fails, you are probably hitting a CORS origin that is
-not in `ALLOWED_ORIGINS` in `server.py` — add the port there rather than
-widening it to a wildcard, because this API can read files and launch
-applications.
+`curl http://127.0.0.1:8001/health`. If nothing answers, start uvicorn — or note
+that `npm run dev:desktop` starts it for you, and prints the error to the
+terminal if it could not. If `/health` answers but the UI still fails, you are
+probably hitting a CORS origin that is not in `ALLOWED_ORIGINS` in `server.py` —
+add the port there rather than widening it to a wildcard, because this API can
+read files and launch applications.
 
 **Mic button does nothing.** The renderer needs a secure context for
 `getUserMedia`. `localhost` qualifies; a LAN IP over plain HTTP does not. Grant
 macOS microphone permission to Electron.
 
 **Transcription always fails.** `server.py` decodes uploads with **PyAV**
-(`import av`). It is in the `[server]` extra but not in `requirements.txt`, so a
-plain install leaves `/transcribe` broken with a 503.
-
-**`npm test` finds no tests.** It runs `node --test src/`, which only picks up
-tests inside `src/`.
+(`import av`), now pinned in both `requirements.txt` and the `[server]` extra.
+An install predating that change still needs `pip install "av>=12.0.0"`.

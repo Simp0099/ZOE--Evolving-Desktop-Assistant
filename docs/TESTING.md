@@ -166,13 +166,15 @@ built-in test runner — there is no test framework dependency.
 
 ```bash
 cd frontend/zoe
-npm test              # node --test src/
+npm test              # node --test "src/**/*.test.js"
 npm run lint          # oxlint
 npm run build         # build validation; writes dist/
 ```
 
-`node --test src/` only discovers tests **inside `src/`**. Two files, 20 tests
-as of 2026-10-15, all passing:
+The glob is deliberate: `node --test src/` treats the directory as a single test
+target and fails on Node 22+ with `not ok 1 - src`. The glob form needs Node
+21+ (Vite 8 needs 20.19+ or 22.12+ anyway); this project is verified on Node 26.
+Two files, 20 tests as of 2026-10-15, all passing:
 
 | File | Covers |
 | --- | --- |

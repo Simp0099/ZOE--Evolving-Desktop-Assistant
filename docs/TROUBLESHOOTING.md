@@ -265,42 +265,65 @@ entry that describes a problem nobody has confirmed is worse than no entry.
 
 ## Electron UI
 
+The whole UI is one command now:
+
+```bash
+cd frontend/zoe
+npm run dev:desktop
+```
+
+That starts Vite, waits for it to answer on `:5173`, opens Electron, and lets
+the Electron main process start `uvicorn` if nothing is already serving `:8001`.
+
 **Blank window on `npm run desktop`.**
-The Vite dev server is not running. `electron.cjs` loads
-`http://localhost:5173` unconditionally, so run `npm run dev` first.
+The Vite dev server is not running. `npm run desktop` waits for `:5173` and, if
+nothing answers within 30 s, shows a short page saying so instead of a blank
+window. Either run `npm run dev` first or use `npm run dev:desktop`.
 
 ```bash
 curl -sI http://localhost:5173 | head -1     # expects HTTP/1.1 200
 ```
 
-**"Zoe cannot connect to the assistant."**
+**"Zoe cannot connect to the assistant." / the composer says "Backend offline".**
 The backend is not up.
 
 ```bash
 curl http://127.0.0.1:8001/health
 ```
 
-No answer → start `python -m uvicorn server:app --host 127.0.0.1 --port 8001`.
+No answer → `npm run dev:desktop` (or
+`python -m uvicorn server:app --host 127.0.0.1 --port 8001`) in a terminal.
+Electron prints its own reason when it cannot start one — usually no
+`.venv` at the project root.
 An answer but the UI still fails → the page origin is not in `ALLOWED_ORIGINS`
 in `server.py`. Add the port there; do **not** widen it to `*`, because the API
 can read files and launch applications.
 
+**Typing does nothing in the UI.**
+The textarea is disabled only while a request is in flight, never because of
+backend state — so this means either a request is genuinely stuck (press
+**Stop**, or restart), or the window is blank because Vite is not serving
+`:5173` (see above).
+
 **Transcription always fails (HTTP 503, "audio decoding is unavailable").**
-`server.py` imports **PyAV** to decode WebM/Opus. PyAV ships in the `[server]`
-extra and is *not* in `requirements.txt`.
+`server.py` imports **PyAV** to decode WebM/Opus. PyAV is now pinned in both
+`requirements.txt` and the `[server]` extra; an install predating that change
+still needs it.
 
 ```bash
-python -c "import av; print(av.__version__)" || pip install -e ".[server]"
+python -c "import av; print(av.__version__)" || pip install "av>=12.0.0"
 ```
 
 **Mic button does nothing in the UI.**
 `getUserMedia` needs a secure context. `localhost` qualifies; a LAN IP over plain
 HTTP does not. Also check macOS microphone permission for Electron. Text mode
-still works, which is the fastest way to confirm the backend is fine.
+still works, which is the fastest way to confirm the backend is fine. The button
+is only disabled when `/health` reports `voice_input_available: false`; an
+offline backend gives a spoken error on click rather than a dead button.
 
-**`npm test` reports zero tests.**
-It runs `node --test src/`, which only discovers tests inside `src/`. Frontend
-tests must live there.
+**`npm test` finds no tests.**
+It runs `node --test "src/**/*.test.js"`; frontend tests must live in `src/` and
+end in `.test.js`.
 
 ## After renaming or moving anything
 

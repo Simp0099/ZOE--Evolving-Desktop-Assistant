@@ -16,7 +16,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 import server
+from tests.mock_providers import build_layer, reply
 from zoe.brain import BrainError
+
+#: Model id the scripted provider is opened with (behaviours key on it).
+MOCK_MODEL = "mock-model"
 
 
 @pytest.fixture
@@ -97,6 +101,46 @@ def _wav_bytes(rate=8000, seconds=0.1):
     return buffer.getvalue()
 
 
+def _mock_layer(behaviours, **kwargs):
+    """A one-model layer built from the shared scripted provider.
+
+    Behaviours are keyed by the *model* id, which is what the provider is
+    opened with.
+    """
+    return build_layer(
+        models=[{"key": "m1", "model": MOCK_MODEL, "priority": 90,
+                 "capabilities": {"reasoning": True, "tool_calling": True}}],
+        behaviours=behaviours,
+        **kwargs,
+    )
+
+
+@pytest.fixture
+def real_brain(client, monkeypatch):
+    """Make server.get_brain build the real Brain on a scripted provider.
+
+    The default fixture fakes ZoeBrain itself, which keeps these tests on the
+    transport. This one keeps the transport *and* runs the genuine Brain behind
+    it, so the reply really is a model's and the failures really are
+    BrainError. No network, no credentials.
+    """
+
+    def install(layer):
+        # zoe.brain.ZoeBrain, not server.ZoeBrain: the client fixture has already
+        # replaced the name server.py looks up, and this test wants the real one.
+        from zoe.brain import ZoeBrain as RealBrain
+
+        monkeypatch.setattr(
+            server, "ZoeBrain",
+            lambda conversation_id="zoe-ui": RealBrain(
+                conversation_id=conversation_id, model_layer=layer
+            ),
+        )
+        return layer
+
+    return install
+
+
 # ---------------------------------------------------------------------------
 # Health
 # ---------------------------------------------------------------------------
@@ -113,6 +157,23 @@ def test_health_reports_real_voice_capability(client):
     assert isinstance(body["voice_input_available"], bool)
     assert isinstance(body["voice_output_available"], bool)
     assert body["tts_engine"]
+
+
+def test_health_carries_exactly_the_fields_the_ui_reads(client):
+    """The settings modal renders these names verbatim.
+
+    A rename on either side would leave the UI reading `undefined` -- a blank
+    status rather than a visible failure -- so the contract is pinned here.
+    """
+    body = client.get("/health").json()
+    assert set(body) == {
+        "status",
+        "voice_input_available",
+        "voice_output_available",
+        "models_usable",
+        "tts_engine",
+    }
+    assert isinstance(body["models_usable"], int)
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +225,42 @@ def test_brain_failure_becomes_503_not_a_fake_reply(client):
     response = client.post("/chat", json={"message": "hi again", "conversation_id": "c1"})
     assert response.status_code == 503
     assert "usage limit" in response.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Chat, through the real Brain on a scripted provider
+# ---------------------------------------------------------------------------
+
+def test_chat_returns_a_real_model_reply(client, real_brain):
+    """The reply is the provider's, not a stub's: transport + Brain together."""
+    real_brain(_mock_layer({MOCK_MODEL: reply("Hello from the mock provider.")}))
+
+    response = client.post("/chat", json={"message": "hi", "conversation_id": "real1"})
+    assert response.status_code == 200
+    assert "Hello from the mock provider." in response.json()["response"]
+
+
+def test_no_configured_provider_is_a_readable_503(client, real_brain):
+    """What the UI sees with no API key set: 503 and words a user can act on."""
+    real_brain(_mock_layer({MOCK_MODEL: reply("unused")}, configured=False))
+
+    response = client.post("/chat", json={"message": "hi", "conversation_id": "real1"})
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert "model" in detail.lower()
+    # The internal detail (keys, provider names) stays in the log.
+    assert "configured" not in detail.lower()
+
+
+def test_real_brain_conversation_reset_clears_its_history(client, real_brain):
+    """The UI clears the local transcript and the backend context together; if
+    only one were cleared, a stale answer would reappear in the same chat id."""
+    real_brain(_mock_layer({MOCK_MODEL: reply("remembered")}))
+
+    assert client.post("/chat", json={"message": "note this", "conversation_id": "real1"}).status_code == 200
+    client.post("/conversation/reset", json={"conversation_id": "real1"})
+    response = client.post("/chat", json={"message": "note this", "conversation_id": "real1"})
+    assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------

@@ -28,13 +28,23 @@ Pillow>=10.0.0
 sounddevice>=0.4.6
 faster-whisper>=1.0.0
 soundfile>=0.12.1
+# PyAV decodes the WebM/Opus the browser's MediaRecorder produces, which
+# soundfile cannot read. server.py needs it for /transcribe; it is also in the
+# [server] extra, and the two pins are kept in step.
+av>=12.0.0
 # Optional local STT + Kokoro TTS / pyttsx3 engines (Python 3.10-3.12 for Kokoro)
 # Phase 4 voice input consumes its PCM from the shared microphone stream instead
 # of opening a second capture device.
 SpeechRecognition>=3.10.0
 
 # Wake Word Detection (Phase 6 - openWakeWord)
-openwakeword>=0.6.0
+# macOS only: openWakeWord pins tflite-runtime, which has no Linux wheel for
+# Python 3.12, so an unconditional pin makes `pip install -r requirements.txt`
+# fail on Linux. zoe/wake_word.py treats an absent package as "no wake word"
+# (check_openwakeword_version returns early and WakeWordEngine.load returns
+# False), so text mode, the UI and the rest of the suite are unaffected.
+# Install it explicitly on Linux to enable the wake word.
+openwakeword>=0.6.0; sys_platform == "darwin"
 numpy>=1.21.6
 scipy>=1.10
 

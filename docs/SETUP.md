@@ -115,7 +115,22 @@ then never reached. See [CONFIGURATION.md](CONFIGURATION.md).
 ## Optional: openWakeWord (wake word)
 
 `openwakeword>=0.6.0` is in `requirements.txt` and is what lets the assistant
-stay offline for activation. 0.6.0 is a hard floor, not a preference: it is the
+stay offline for activation. It is pinned **`; sys_platform == "darwin"` only**:
+openWakeWord requires `tflite-runtime`, which has no Linux wheel for Python
+3.12, so an unconditional pin makes `pip install -r requirements.txt` fail on
+Linux. On other platforms install it explicitly if you want the wake word:
+
+```bash
+pip install "openwakeword>=0.6.0"      # Linux, or any platform
+```
+
+An absent package is **not** an error: `check_openwakeword_version()` returns
+early when the distribution is missing, `WakeWordEngine.load()` reports the
+failure and returns `False`, and the assistant falls back to text mode. The
+wake-word tests that need the real package skip with a reason rather than
+failing. macOS behaviour is unchanged.
+
+0.6.0 is a hard floor, not a preference: it is the
 first release exposing the installed-model catalog this code validates against,
 and an older install otherwise fails much later as an opaque `AttributeError`
 deep inside the engine.
@@ -266,14 +281,30 @@ need it:
 pip install -e ".[server]"     # fastapi, uvicorn, python-multipart, soundfile, scipy, PyAV
 ```
 
-**PyAV is not in `requirements.txt`.** `server.py` imports `av` to decode the
-browser's WebM/Opus recordings; without it `/transcribe` returns HTTP 503 with
-"audio decoding is unavailable". If transcription always fails in the UI, this
-is why.
+**PyAV is required by `server.py`** — it imports `av` to decode the browser's
+WebM/Opus recordings, and without it `/transcribe` returns HTTP 503 with "audio
+decoding is unavailable". It is now pinned in **both** `requirements.txt` and the
+`[server]` extra, so either install path is enough. An install predating that
+change needs `pip install "av>=12.0.0"`.
 
 ## Running the Electron UI
 
-Three processes, started by hand. Electron does not launch the backend.
+One command. It starts Vite, waits for `:5173`, opens Electron, and lets the
+Electron main process start the backend if nothing is already serving `:8001`:
+
+```bash
+cd frontend/zoe
+npm install          # once
+npm run dev:desktop
+```
+
+Electron polls `/health` for up to 30 s while starting the backend. If it never
+answers, the terminal says why and the window still opens in its offline state —
+you can keep typing, and a message sent offline reports the real error instead of
+failing silently. A backend **you** started by hand is never killed when Electron
+exits; only one Electron started itself.
+
+If you prefer to run the backend yourself, the individual scripts still work:
 
 ```bash
 # terminal 1 — the backend

@@ -24,7 +24,7 @@ voice path needs macOS microphone permission and the launch allowlist in
 
 | | Terminal (core) | Electron UI |
 | --- | --- | --- |
-| Start | `python -m zoe --text` | `npm run dev` + `npm run desktop` in `frontend/zoe/`, plus a running backend |
+| Start | `python -m zoe --text` | `npm run dev:desktop` in `frontend/zoe/` — starts Vite, Electron and the backend |
 | Input | microphone + keyboard | microphone (MediaRecorder) + keyboard |
 | Speech out | direct to the speaker | WAV streamed from the backend and played in the renderer |
 | Transport | in-process | HTTP to `127.0.0.1:8001` |
@@ -64,7 +64,7 @@ Labels: **TESTED** — implemented and covered by an offline test you can run.
 ## Requirements
 
 - Python 3.10+ (developed and tested on 3.12)
-- Node.js 18+ (tested on 26) and npm, for the UI only
+- Node.js 21+ (tested on 26; Vite 8 requires 20.19+ or 22.12+) and npm, for the UI only
 - macOS microphone permission for the voice path
 
 ## Install
@@ -81,9 +81,15 @@ cp .env.example .env
 Put at least one **enabled** provider key in `.env`. Full instructions, optional
 dependencies and macOS permissions: [docs/SETUP.md](docs/SETUP.md).
 
-> `pip install -e ".[server]"` also installs **PyAV**, which `server.py` needs to
-> decode browser recordings. It is not in `requirements.txt`, so a plain
-> `pip install -r requirements.txt` leaves `/transcribe` broken.
+> `pip install -e ".[server]"` also installs **PyAV**, which `server.py` needs
+> to decode browser recordings. It is now pinned in `requirements.txt` too, so
+> either install path leaves `/transcribe` working. If you installed before
+> that change, run `pip install "av>=12.0.0"` or reinstall the extra.
+>
+> `openwakeword` is pinned for **macOS only** (`; sys_platform == "darwin"`): it
+> requires `tflite-runtime`, which has no Linux wheel for Python 3.12, so an
+> unconditional pin makes the install fail there. An absent package is not an
+> error — the assistant falls back to text mode and says so.
 
 ## Run
 
@@ -93,18 +99,29 @@ python -m zoe --text     # terminal, text only, no microphone
 python -m zoe            # terminal, voice
 ```
 
-With the UI:
+With the UI — one command starts all three processes:
 
 ```bash
-python -m uvicorn server:app --host 127.0.0.1 --port 8001   # terminal 1
-cd frontend/zoe && npm install                               # terminal 2
-npm run dev                                                  # Vite on :5173
-npm run desktop                                              # Electron window
+cd frontend/zoe
+npm install          # once
+npm run dev:desktop  # Vite on :5173 + Electron + the backend on :8001
 ```
 
-Three processes, started by hand. `npm run desktop` currently loads the Vite dev
-server URL unconditionally and does not start the backend — see
-[docs/FRONTEND.md](docs/FRONTEND.md).
+`npm run dev:desktop` starts Vite, waits for it to answer on `:5173`, opens the
+Electron window, and lets the main process start `uvicorn` if nothing is already
+serving `:8001`. The backend it started is stopped when Electron quits; a
+backend **you** started by hand is left alone. Nothing is blocked while it comes
+up: you can type, and a message sent offline reports why it failed rather than
+failing silently.
+
+The individual scripts still work — `npm run dev` (Vite only), `npm run desktop`
+(Electron only) — if you want the backend in a separate terminal:
+
+```bash
+python -m uvicorn server:app --host 127.0.0.1 --port 8001
+```
+
+See [docs/FRONTEND.md](docs/FRONTEND.md) for what the UI still does not do.
 
 ## Configuration
 
@@ -154,8 +171,8 @@ Full policy and how to report an issue: [SECURITY.md](SECURITY.md).
   detection, so this class of question is answered only if a stored fact happens
   to share words with the question.
 - No retention or deletion policy for `data/`.
-- The Electron main process does not yet launch the backend, and does not guard
-  `window.open` or navigation.
+- The Electron main process starts and stops the backend it spawned, but does
+  not guard `window.open` or navigation.
 - MIT licensed. One plugin is adapted from CC BY-NC 4.0 material, which
   constrains commercial use — see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 

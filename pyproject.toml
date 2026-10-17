@@ -22,6 +22,9 @@ server = [
     "fastapi>=0.110.0",
     "uvicorn>=0.29.0",
     "python-multipart>=0.0.6",
+    # PyAV decodes the WebM/Opus the browser's MediaRecorder produces. Without
+    # it /transcribe answers 503 instead of transcribing.
+    "av>=12.0.0",
     "soundfile>=0.12.1",
     "scipy>=1.10",
 ]

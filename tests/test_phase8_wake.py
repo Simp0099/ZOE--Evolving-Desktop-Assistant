@@ -4,6 +4,7 @@ Deterministic throughout: scripted fake engines, no microphone, no ONNX.
 Real acoustic numbers live in docs/wake_phrases.md (scripts/wake_eval.py).
 """
 
+import importlib.util
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -21,6 +22,28 @@ from zoe.config import (  # noqa: E402
 from zoe.conversation import State  # noqa: E402
 from zoe.voice_loop import VoiceLoop  # noqa: E402
 from zoe.wake_word import WakeWordEngine, known_wake_models  # noqa: E402
+
+def _openwakeword_installed() -> bool:
+    """True when the openWakeWord package can be imported.
+
+    ``find_spec`` rather than a real import, wrapped in ``try/except`` for the
+    same reason as the Kokoro hook in conftest.py: locating a spec can raise for
+    reasons other than "absent", and a marker that raises breaks collection.
+    """
+    try:
+        return importlib.util.find_spec("openwakeword") is not None
+    except (ImportError, ValueError):
+        return False
+
+
+#: openWakeWord is pinned for macOS only: it requires ``tflite-runtime``, which
+#: has no Linux wheel, so a Linux install deliberately ships without it. The
+#: tests below reach into the real package and are skipped where it is absent;
+#: everything built on ``FakeMultiEngine`` runs either way.
+requires_openwakeword = pytest.mark.skipif(
+    not _openwakeword_installed(),
+    reason="openwakeword not installed (macOS-only pin in requirements.txt)",
+)
 
 
 class FakeMultiEngine(WakeWordEngine):
@@ -110,6 +133,7 @@ class TestPhraseCoverage:
         assert WAKE_WORD_PHRASES[0]["model"] == "hey_jarvis"
         assert WAKE_WORD_PHRASES[0]["enabled"] is True
 
+    @requires_openwakeword
     def test_bare_jarvis_disabled_without_verified_model(self):
         assert "hey_jarvis" in known_wake_models()
         assert "jarvis" not in known_wake_models()
@@ -152,6 +176,7 @@ class TestConfigParsing:
 
 
 class TestEngine:
+    @requires_openwakeword
     def test_single_model_session_for_all_phrases(self):
         import openwakeword
         import openwakeword.model as owm
@@ -166,6 +191,7 @@ class TestEngine:
                 assert model_cls.call_args.kwargs["wakeword_models"] == [
                     "hey_jarvis", "jarvis_custom"]
 
+    @requires_openwakeword
     def test_unknown_model_fails_clearly(self):
         import openwakeword.model as owm
         with patch.object(owm, "Model", side_effect=FileNotFoundError("nope")):
@@ -392,7 +418,8 @@ class TestVersionGuard:
         from zoe import wake_word
 
         found = wake_word.installed_openwakeword_version()
-        assert found is not None, "openWakeWord is required for the wake-word tests"
+        if found is None:
+            pytest.skip("openwakeword not installed; see the marker above")
         assert found >= wake_word.MIN_OPENWAKEWORD_VERSION
         wake_word.check_openwakeword_version()  # the real install must not raise
 
